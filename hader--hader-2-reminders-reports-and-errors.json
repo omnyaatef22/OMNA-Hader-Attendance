@@ -1,0 +1,723 @@
+{
+  "name": "Hader 2 · Reminders, Reports & Errors",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "n115",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Turn any failure into one row: which workflow, which node, what kind of error.\nconst e = $json.execution || {}; const wf = $json.workflow || {};\nconst msg = String(e.error?.message || $json.trigger?.error?.message || 'Unknown error').slice(0, 500);\nconst rules = [[/401|403|unauthori[sz]ed|invalid.*(token|credentials)|expired/i,'auth','critical'],[/429|rate limit|too many requests|quota/i,'rate_limit','warning'],\n [/ETIMEDOUT|ECONNRESET|ENOTFOUND|timeout|socket hang up|aborted/i,'network','warning'],[/VALIDATION:/,'validation','info'],\n [/AI_OUTPUT:|JSON|Unexpected token/i,'ai_output','warning'],[/PUT_[A-Z_]+|chat not found|not configured/i,'config','critical']];\nconst [, type, severity] = rules.find(([re]) => re.test(msg)) || [null, 'unknown', 'warning'];\nreturn [{ json: { time: $now.setZone('Africa/Cairo').toFormat('yyyy-MM-dd HH:mm'), workflow: wf.name || '', node: e.lastNodeExecuted || '',\n  type, severity, message: msg, execution_url: e.url || '',\n  text: (severity === 'critical' ? '🚨' : '⚠️') + ' ' + (wf.name || 'Workflow') + ' · ' + type + '\\nNode: ' + (e.lastNodeExecuted || '?') + '\\n' + msg + '\\n' + (e.url || '') } }];"
+      },
+      "id": "n116",
+      "name": "Classify Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "sheet",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 304,
+          "mode": "id",
+          "cachedResultName": "Errors"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "time": "={{ $json.time }}",
+            "workflow": "={{ $json.workflow }}",
+            "node": "={{ $json.node }}",
+            "type": "={{ $json.type }}",
+            "message": "={{ $json.message }}",
+            "execution_url": "={{ $json.execution_url }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "time",
+              "displayName": "time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "workflow",
+              "displayName": "workflow",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "node",
+              "displayName": "node",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "type",
+              "displayName": "type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "execution_url",
+              "displayName": "execution_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "cellFormat": "RAW",
+          "useAppend": true
+        }
+      },
+      "id": "n117",
+      "name": "Log Error",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        440,
+        0
+      ],
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_CHAT_ID",
+        "text": "={{ $('Classify Error').item.json.text }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "n118",
+      "name": "Alert Team",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        660,
+        0
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c119",
+              "leftValue": "={{ $('Classify Error').item.json.severity }}",
+              "rightValue": "critical",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "n120",
+      "name": "Critical?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        880,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "YOUR_SEND_TO",
+        "subject": "={{ 'CRITICAL: ' + $('Classify Error').item.json.workflow + ' · ' + $('Classify Error').item.json.type }}",
+        "emailType": "text",
+        "message": "={{ $('Classify Error').item.json.text }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "n121",
+      "name": "Email Critical Error",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1100,
+        0
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 10 * * 0-4"
+            }
+          ]
+        }
+      },
+      "id": "n122",
+      "name": "School Days 10:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "sheet",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 302,
+          "mode": "id",
+          "cachedResultName": "Timetable"
+        },
+        "options": {}
+      },
+      "id": "n123",
+      "name": "Read Timetable",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        220,
+        300
+      ],
+      "executeOnce": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "sheet",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 303,
+          "mode": "id",
+          "cachedResultName": "Attendance"
+        },
+        "options": {},
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "date",
+              "lookupValue": "={{ $now.setZone('Africa/Cairo').toFormat('yyyy-MM-dd') }}"
+            }
+          ]
+        }
+      },
+      "id": "n124",
+      "name": "Read Today's Attendance",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        440,
+        300
+      ],
+      "alwaysOutputData": true,
+      "executeOnce": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Every class+period on today's timetable must have attendance by 10:00. List the gaps.\nconst day = $now.setZone('Africa/Cairo').toFormat('cccc');\nconst done = new Set($input.all().map(i => i.json).filter(r => r.class).map(r => r.class + '|' + r.period));\nreturn $('Read Timetable').all().map(i => i.json).filter(t => t.day === day && !done.has(t.class + '|' + t.period))\n  .map(t => ({ json: { chat: t.teacher_chat_id || 'PUT_ADMIN_CHAT_ID', text: '⏰ Attendance missing: ' + t.class + ' period ' + t.period + ' (' + t.subject + ', ' + t.teacher_name + '). Submit: PUT_N8N_URL/form/hader-attendance' } }));"
+      },
+      "id": "n125",
+      "name": "Find Missing Attendance",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "n126",
+      "name": "Remind Teacher",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        880,
+        300
+      ],
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 15 * * 0-4"
+            }
+          ]
+        }
+      },
+      "id": "n127",
+      "name": "School Days 15:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        550
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "sheet",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 303,
+          "mode": "id",
+          "cachedResultName": "Attendance"
+        },
+        "options": {}
+      },
+      "id": "n128",
+      "name": "Read All Attendance",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        220,
+        550
+      ],
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "sheet",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 301,
+          "mode": "id",
+          "cachedResultName": "Students"
+        },
+        "options": {}
+      },
+      "id": "n129",
+      "name": "Read Students",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        440,
+        550
+      ],
+      "executeOnce": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "// A student absent on each of the last 3 school days that have records = a streak. Counselor follows up.\nconst att = $('Read All Attendance').all().map(i => i.json).filter(r => r.student_id);\nconst days = [...new Set(att.map(r => r.date))].sort().slice(-3);\nif (days.length < 3) return [];\nconst students = Object.fromEntries($input.all().map(i => [i.json.student_id, i.json]));\nconst out = [];\nfor (const id of Object.keys(students)) {\n  const absentAll = days.every(d => att.some(r => r.student_id === id && r.date === d && r.status === 'absent'));\n  if (absentAll) out.push(students[id]);\n}\nif (!out.length) return [];\nreturn [{ json: { count: out.length, html: '<p>Students absent on ' + days.join(', ') + ':</p><ul>' + out.map(s => '<li>' + s.student_id + ' · ' + s.name + ' (' + s.class + ') · parent ' + s.parent_name + ' ' + s.parent_phone + '</li>').join('') + '</ul>' } }];"
+      },
+      "id": "n130",
+      "name": "Find Absence Streaks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        550
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "YOUR_SEND_TO",
+        "subject": "={{ $json.count + ' student(s) with a 3-day absence streak' }}",
+        "emailType": "html",
+        "message": "={{ $json.html }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "n131",
+      "name": "Email Counselor",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        550
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 16 * * 4"
+            }
+          ]
+        }
+      },
+      "id": "n132",
+      "name": "Thursday 16:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "sheet",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 303,
+          "mode": "id",
+          "cachedResultName": "Attendance"
+        },
+        "options": {}
+      },
+      "id": "n133",
+      "name": "Read Week Attendance",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        220,
+        800
+      ],
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Attendance rate per class for the last 7 days, as an HTML table.\nconst from = $now.setZone('Africa/Cairo').minus({ days: 7 }).toFormat('yyyy-MM-dd');\nconst rows = $input.all().map(i => i.json).filter(r => r.student_id && r.date >= from);\nconst by = {};\nfor (const r of rows) { const c = (by[r.class] = by[r.class] || { total: 0, present: 0, late: 0, absent: 0 }); c.total++; c[r.status] = (c[r.status] || 0) + 1; }\nconst tr = Object.entries(by).map(([k, c]) => '<tr><td>' + k + '</td><td>' + c.total + '</td><td>' + c.present + '</td><td>' + c.late + '</td><td>' + c.absent + '</td><td>' + Math.round(100 * (c.present + c.late) / c.total) + '%</td></tr>').join('');\nreturn [{ json: { html: '<h3>Weekly attendance since ' + from + '</h3><table border=\"1\" cellpadding=\"6\"><tr><th>Class</th><th>Records</th><th>Present</th><th>Late</th><th>Absent</th><th>Rate</th></tr>' + (tr || '<tr><td colspan=\"6\">No records this week</td></tr>') + '</table>' } }];"
+      },
+      "id": "n134",
+      "name": "Build Weekly Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "YOUR_SEND_TO",
+        "subject": "={{ 'Weekly attendance report · ' + $now.setZone('Africa/Cairo').toFormat('yyyy-MM-dd') }}",
+        "emailType": "html",
+        "message": "={{ $json.html }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "n135",
+      "name": "Email Weekly Report",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        660,
+        800
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Classify Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Error": {
+      "main": [
+        [
+          {
+            "node": "Log Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Error": {
+      "main": [
+        [
+          {
+            "node": "Alert Team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert Team": {
+      "main": [
+        [
+          {
+            "node": "Critical?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Critical?": {
+      "main": [
+        [
+          {
+            "node": "Email Critical Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "School Days 10:00": {
+      "main": [
+        [
+          {
+            "node": "Read Timetable",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Timetable": {
+      "main": [
+        [
+          {
+            "node": "Read Today's Attendance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Today's Attendance": {
+      "main": [
+        [
+          {
+            "node": "Find Missing Attendance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Missing Attendance": {
+      "main": [
+        [
+          {
+            "node": "Remind Teacher",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "School Days 15:00": {
+      "main": [
+        [
+          {
+            "node": "Read All Attendance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read All Attendance": {
+      "main": [
+        [
+          {
+            "node": "Read Students",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Students": {
+      "main": [
+        [
+          {
+            "node": "Find Absence Streaks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Absence Streaks": {
+      "main": [
+        [
+          {
+            "node": "Email Counselor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Thursday 16:00": {
+      "main": [
+        [
+          {
+            "node": "Read Week Attendance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Week Attendance": {
+      "main": [
+        [
+          {
+            "node": "Build Weekly Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Weekly Report": {
+      "main": [
+        [
+          {
+            "node": "Email Weekly Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Cairo"
+  }
+}

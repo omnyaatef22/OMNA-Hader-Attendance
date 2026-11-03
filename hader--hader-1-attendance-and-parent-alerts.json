@@ -1,0 +1,833 @@
+{
+  "name": "Hader 1 · Attendance & Parent Alerts",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Class attendance",
+        "formDescription": "One submission per class and period. Everyone not listed is marked present.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Class",
+              "fieldType": "dropdown",
+              "fieldName": "class",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "G5-A"
+                  },
+                  {
+                    "option": "G5-B"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Period",
+              "fieldType": "dropdown",
+              "fieldName": "period",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "1"
+                  },
+                  {
+                    "option": "2"
+                  },
+                  {
+                    "option": "3"
+                  },
+                  {
+                    "option": "4"
+                  },
+                  {
+                    "option": "5"
+                  },
+                  {
+                    "option": "6"
+                  },
+                  {
+                    "option": "7"
+                  },
+                  {
+                    "option": "8"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Date",
+              "fieldType": "date",
+              "fieldName": "date",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Absent student IDs",
+              "fieldType": "textarea",
+              "fieldName": "absent",
+              "placeholder": "S001, S004"
+            },
+            {
+              "fieldLabel": "Late student IDs",
+              "fieldType": "textarea",
+              "fieldName": "late",
+              "placeholder": "S002"
+            },
+            {
+              "fieldLabel": "Teacher name",
+              "fieldName": "teacher",
+              "requiredField": true
+            }
+          ]
+        },
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "n136",
+      "name": "Attendance Form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.5,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Reject impossible submissions before touching the sheet.\nconst g = (k, l) => String($json[k] ?? $json[l] ?? '').trim();\nconst ids = s => [...new Set(s.toUpperCase().match(/S\\d{3}/g) || [])];\nconst sub = { class: g('class', 'Class'), period: g('period', 'Period'), date: g('date', 'Date').slice(0, 10), teacher: g('teacher', 'Teacher name'),\n  absent: ids(g('absent', 'Absent student IDs')), late: ids(g('late', 'Late student IDs')) };\nconst p = [];\nconst d = DateTime.fromISO(sub.date, { zone: 'Africa/Cairo' }); const today = $now.setZone('Africa/Cairo').startOf('day');\nif (!d.isValid) p.push('date is invalid');\nelse { if (d > today) p.push('date is in the future'); if (today.diff(d, 'days').days > 2) p.push('more than 2 days late: ask the admin to correct it');\n  if ([5, 6].includes(d.weekday)) p.push(d.toFormat('cccc') + ' is not a school day'); }\nconst both = sub.absent.filter(x => sub.late.includes(x)); if (both.length) p.push('listed as both absent and late: ' + both.join(', '));\nconst typed = (g('absent', 'Absent student IDs') + ' ' + g('late', 'Late student IDs')).replace(/S\\d{3}|[\\s,،;]/gi, ''); if (typed) p.push('unrecognised text in the ID lists: \"' + typed.slice(0, 40) + '\"');\nreturn [{ json: { ...sub, problems: p, ok: !p.length } }];"
+      },
+      "id": "n137",
+      "name": "Validate Submission",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c138",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "n139",
+      "name": "Submission OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        448,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 303,
+          "mode": "id",
+          "cachedResultName": "Attendance"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "class",
+              "lookupValue": "={{ $json.class }}"
+            },
+            {
+              "lookupColumn": "date",
+              "lookupValue": "={{ $json.date }}"
+            },
+            {
+              "lookupColumn": "period",
+              "lookupValue": "={{ $json.period }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "n140",
+      "name": "Find Earlier Submission",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        672,
+        -96
+      ],
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c141",
+              "leftValue": "={{ $json.record_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "n142",
+      "name": "First Submission?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        880,
+        -96
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 301,
+          "mode": "id",
+          "cachedResultName": "Students"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "class",
+              "lookupValue": "={{ $('Validate Submission').item.json.class }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "n143",
+      "name": "Read Class Students",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1104,
+        -208
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "// One record per student in the class. IDs that are not in this class stop the submission.\nconst s = $('Validate Submission').first().json; const kids = $input.all().map(i => i.json).filter(k => k.student_id);\nconst known = new Set(kids.map(k => k.student_id));\nconst unknown = [...s.absent, ...s.late].filter(x => !known.has(x));\nif (unknown.length) return [{ json: { ok: false, problems: ['not in ' + s.class + ': ' + unknown.join(', ')] } }];\nconst now = $now.setZone('Africa/Cairo').toFormat('yyyy-MM-dd HH:mm');\nreturn kids.map(k => ({ json: { ok: true, record_id: s.date.replace(/-/g, '') + '-' + s.class + '-P' + s.period + '-' + k.student_id, date: s.date, class: s.class, period: s.period,\n  student_id: k.student_id, name: k.name, parent_name: k.parent_name, parent_phone: k.parent_phone,\n  status: s.absent.includes(k.student_id) ? 'absent' : s.late.includes(k.student_id) ? 'late' : 'present', submitted_by: s.teacher, submitted_at: now } }));"
+      },
+      "id": "n144",
+      "name": "Build Records",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1328,
+        -208
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c145",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "n146",
+      "name": "IDs Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1552,
+        -208
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 303,
+          "mode": "id",
+          "cachedResultName": "Attendance"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "record_id": "={{ $json.record_id }}",
+            "date": "={{ $json.date }}",
+            "class": "={{ $json.class }}",
+            "period": "={{ $json.period }}",
+            "student_id": "={{ $json.student_id }}",
+            "status": "={{ $json.status }}",
+            "submitted_by": "={{ $json.submitted_by }}",
+            "submitted_at": "={{ $json.submitted_at }}",
+            "parent_notified": "no"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "record_id",
+              "displayName": "record_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "date",
+              "displayName": "date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "class",
+              "displayName": "class",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "period",
+              "displayName": "period",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "student_id",
+              "displayName": "student_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "submitted_by",
+              "displayName": "submitted_by",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "submitted_at",
+              "displayName": "submitted_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "parent_notified",
+              "displayName": "parent_notified",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "cellFormat": "RAW",
+          "useAppend": true
+        }
+      },
+      "id": "n147",
+      "name": "Save Attendance",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1760,
+        -304
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "Attendance saved ✅",
+        "completionMessage": "={{ $('Build Records').all().length + ' students recorded for ' + $('Validate Submission').first().json.class + ', period ' + $('Validate Submission').first().json.period + '. Parents of absent and late students are being notified.' }}",
+        "options": {}
+      },
+      "id": "n148",
+      "name": "Submission Saved Page",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [
+        1984,
+        -400
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c149",
+              "leftValue": "={{ $('Build Records').item.json.status }}",
+              "rightValue": "present",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "n150",
+      "name": "Absent or Late Only",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        1984,
+        -208
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "YOUR_PHONE_NUMBER_ID",
+        "recipientPhoneNumber": "={{ $('Build Records').item.json.parent_phone.replace(/^0/, '20') }}",
+        "textBody": "={{ 'Dear ' + $('Build Records').item.json.parent_name + ', ' + $('Build Records').item.json.name + ' was marked ' + $('Build Records').item.json.status.toUpperCase() + ' in period ' + $('Build Records').item.json.period + ' today (' + $('Build Records').item.json.date + '). Please contact the school if this is unexpected.' }}",
+        "additionalFields": {
+          "previewUrl": false
+        }
+      },
+      "id": "n151",
+      "name": "Message Parent on WhatsApp",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        2208,
+        -208
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "from": "PUT_TWILIO_NUMBER",
+        "to": "={{ '+2' + $('Build Records').item.json.parent_phone }}",
+        "message": "={{ $('Build Records').item.json.name + ' was ' + $('Build Records').item.json.status + ' in period ' + $('Build Records').item.json.period + ' on ' + $('Build Records').item.json.date + '. School office.' }}",
+        "options": {}
+      },
+      "id": "n152",
+      "name": "Fallback SMS",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        2432,
+        -80
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 303,
+          "mode": "id",
+          "cachedResultName": "Attendance"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "record_id": "={{ $('Build Records').item.json.record_id }}",
+            "parent_notified": "={{ $json.messages ? 'whatsapp' : 'sms' }}"
+          },
+          "matchingColumns": [
+            "record_id"
+          ],
+          "schema": [
+            {
+              "id": "record_id",
+              "displayName": "record_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "parent_notified",
+              "displayName": "parent_notified",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "cellFormat": "RAW"
+        }
+      },
+      "id": "n153",
+      "name": "Mark Parent Notified",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2640,
+        -208
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_CHAT_ID",
+        "text": "={{ '📵 Could not reach the parent of ' + $('Build Records').item.json.name + ' (' + $('Build Records').item.json.parent_phone + ') by WhatsApp or SMS. Please call.' }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "n154",
+      "name": "Both Channels Failed",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2640,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "Already submitted",
+        "completionMessage": "={{ 'Attendance for ' + $('Validate Submission').item.json.class + ' period ' + $('Validate Submission').item.json.period + ' on ' + $('Validate Submission').item.json.date + ' was already recorded by ' + $json.submitted_by + '. Ask the admin to edit it.' }}",
+        "options": {}
+      },
+      "id": "n155",
+      "name": "Already Submitted Page",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [
+        1104,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "Not saved: please fix",
+        "completionMessage": "={{ $json.problems.join(' · ') }}",
+        "options": {}
+      },
+      "id": "n156",
+      "name": "Fix and Resubmit Page",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [
+        1664,
+        288
+      ]
+    }
+  ],
+  "connections": {
+    "Attendance Form": {
+      "main": [
+        [
+          {
+            "node": "Validate Submission",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Submission": {
+      "main": [
+        [
+          {
+            "node": "Submission OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Submission OK?": {
+      "main": [
+        [
+          {
+            "node": "Find Earlier Submission",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fix and Resubmit Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Earlier Submission": {
+      "main": [
+        [
+          {
+            "node": "First Submission?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "First Submission?": {
+      "main": [
+        [
+          {
+            "node": "Read Class Students",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Already Submitted Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Class Students": {
+      "main": [
+        [
+          {
+            "node": "Build Records",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Records": {
+      "main": [
+        [
+          {
+            "node": "IDs Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IDs Valid?": {
+      "main": [
+        [
+          {
+            "node": "Save Attendance",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fix and Resubmit Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Attendance": {
+      "main": [
+        [
+          {
+            "node": "Absent or Late Only",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Submission Saved Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Absent or Late Only": {
+      "main": [
+        [
+          {
+            "node": "Message Parent on WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message Parent on WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Mark Parent Notified",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fallback SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fallback SMS": {
+      "main": [
+        [
+          {
+            "node": "Mark Parent Notified",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Both Channels Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Cairo"
+  }
+}
